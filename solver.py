@@ -42,10 +42,21 @@ def solve(graph, num_buses, max_size, constraints, name):
 
     print('       assigning edge weights')
 
-    rowdiest = get_rowdiest(G, constraints, num_buses) ##tweak stop cond
+    # rowdiest = get_rowdiest(G, constraints, num_buses) ##tweak stop cond
 
     for u, v, d in G.edges(data=True):
         d['weight'] = 0
+
+    # lowest = 0
+    # for g in constraints:
+    #     for i in range(len(g)):
+    #         for j in range(i+1, len(g)):
+    #             u, v = g[i], g[j]
+    #             if G.has_edge(u, v):
+    #                 G[u][v]['weight'] -= max(rowdiest.get(u, 0), rowdiest.get(v, 0))
+    #                 lowest = min(lowest, G[u][v]['weight'])
+    # for u, v, d in G.edges(data=True):
+    #     d['weight'] += (1 - lowest)
 
     lowest = 0
     for g in constraints:
@@ -53,10 +64,10 @@ def solve(graph, num_buses, max_size, constraints, name):
             for j in range(i+1, len(g)):
                 u, v = g[i], g[j]
                 if G.has_edge(u, v):
-                    G[u][v]['weight'] -= max(rowdiest.get(u, 0), rowdiest.get(v, 0))
+                    G[u][v]['weight'] -= 1
                     lowest = min(lowest, G[u][v]['weight'])
     for u, v, d in G.edges(data=True):
-        d['weight'] += (1 - lowest)
+        d['weight'] += (-lowest)
 
     print('       Lowest: %d' %(-lowest))
 
