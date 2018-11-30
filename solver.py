@@ -70,7 +70,7 @@ def solve(graph, num_buses, max_size, constraints, name):
             cuts = []
             for c in components:
                 if len(c) < 2:
-                    cuts.append((900000, None))
+                    cuts.append((90000000000000, None))
                 else:
                     cuts.append((nx.stoer_wagner(c)))
 
@@ -177,7 +177,12 @@ def main():
         if not os.path.isdir(output_category_path):
             os.mkdir(output_category_path)
 
+        i = 0
         for input_folder in os.listdir(category_dir):
+            i += 1
+            if (i < 15):
+                continue
+
             input_name = os.fsdecode(input_folder)
             graph, num_buses, size_bus, constraints = parse_input(category_path + "/" + input_name)
             solution = solve(graph, num_buses, size_bus, constraints, size + input_name)
@@ -207,6 +212,8 @@ def main():
     # for component in solution:
     #     output_file.write("%s\n" % list(component))
     # output_file.close()
+
+    # python output_scorer.py './all_inputs/small/56' './outputs/small/56.out'
 
 
 if __name__ == '__main__':
