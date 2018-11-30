@@ -86,27 +86,26 @@ def solve(graph, num_buses, max_size, constraints, name):
     if len(components) > num_buses:
         while len(components) > num_buses:
             components.sort(key=len)
-            components.append(set.union(components.pop(0), components.pop(0)))
-            #doesnt check when adding yet
+            smallest = components.pop(0)
+            least_full = min(components, key=len)
+            least_full.update(smallest)
 
 
     assert len(components) == num_buses
     print('       reducing component sizes:')
 
 
-    #check for bus size/complete rowdy and shuffle by most unpopular
     ind = find_over_limit(components)
     biggest = components[ind]
+
     while(len(biggest) > max_size):
         n = least_popular(biggest, G)
-        for i in range(len(components)):
-            # mostConnectionsAdded = 0
-            if len(components[i]) < max_size:
-                components[i].add(n)
-                biggest.remove(n)
-                #implement checking for best and not complete later
-                break
-        biggest = components[find_over_limit(components)]
+        biggest.remove(n)
+        relocate(n, components, ind, constraints, max_size, G)
+        
+        ind = find_over_limit(components)
+        biggest = components[ind]
+
 
         print('                                 %d/%d' % (len(biggest), max_size))
 
@@ -117,17 +116,64 @@ def solve(graph, num_buses, max_size, constraints, name):
         assert len(c) > 0
     return components
 
+def relocate(node, components, exception, constraints, max_size, G):
+    most_edge_diff = 0
+    best_by_edge = None
+
+    least_rowdy_diff = 10000
+    best_by_rowdy = None
+
+
+    for i in range(len(components)):
+        if len(components[i]) < max_size and i != exception:
+            comp = components[i].copy()
+            S = G.subgraph(comp)
+            edges_before = S.number_of_edges()
+            rowdy_before = rowdy_size(comp, constraints)
+            
+            comp.add(node)
+            S = G.subgraph(comp)
+            edges_after = S.number_of_edges()
+            rowdy_after = rowdy_size(comp, constraints)
+
+            edge_diff = edges_after - edges_before
+            rowdy_diff = rowdy_after - rowdy_before
+
+            if (rowdy_diff > 0):
+                if rowdy_diff < least_rowdy_diff:
+                    least_rowdy_diff = rowdy_diff
+                    best_by_rowdy = components[i]
+            else:
+                if edge_diff >= most_edge_diff:
+                    most_edges = edge_diff
+                    best_by_edge = components[i]
+
+    if best_by_edge != None:
+        best_by_edge.add(node)
+    else:
+        best_by_rowdy.add(node)
+
+def rowdy_size(comp, constraints):
+    removed = set()
+    for g in constraints:
+        g = set(g)
+        if (g.issubset(comp)):
+            removed.update(g)
+    return len(removed)
+
+
 def find_over_limit(components):
     index_max = max(enumerate(components), key=lambda a: len(a[1]))[0]
     return index_max
 
 def least_popular(component, G):
-    lst = []
-    best = 0
-    minDeg = 9999
+    best = None
+    minDeg = 100000
+    S = G.subgraph(component)
+
     for n in component:
-        deg = len(list(G.neighbors(n)))
-        if deg == 1:
+        deg = len(list(S.neighbors(n)))
+        if deg <= 1:
             return n
         if deg < minDeg:
             minDeg = deg
@@ -165,7 +211,7 @@ def main():
         formatted correctly.
     '''
     size_categories = ["small", "medium", "large"]
-    size_categories = ["medium", "large"]
+    # size_categories = ["medium", "large"]
     if not os.path.isdir(path_to_outputs):
         os.mkdir(path_to_outputs)
 
@@ -177,10 +223,13 @@ def main():
         if not os.path.isdir(output_category_path):
             os.mkdir(output_category_path)
 
-        i = 0
+        # i = 0
         for input_folder in os.listdir(category_dir):
-            i += 1
-            if (i < 15):
+            # i += 1
+            # if (i < 15):
+            #     continue
+
+            if size == 'medium' and input_folder == '126':
                 continue
 
             input_name = os.fsdecode(input_folder)
