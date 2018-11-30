@@ -59,10 +59,11 @@ def solve(graph, num_buses, max_size, constraints, name):
         d['weight'] += (1 - lowest)
 
     print('       Lowest: %d' %(-lowest))
-    print('       adjusting components')
-
 
     components = list(nx.connected_components(G))
+
+    print('       adjusting components: %d/%d' %(len(components), num_buses))
+
     if len(components) < num_buses:
         components = [G.subgraph(c) for c in components]
         while len(components) < num_buses: #or all ones
@@ -78,6 +79,8 @@ def solve(graph, num_buses, max_size, constraints, name):
             components.pop(index_min)
             components.append(G.subgraph(mincut[0]))
             components.append(G.subgraph(mincut[1]))
+
+            print('                             %d/%d' %(len(components), num_buses))
         components = [set(c.nodes) for c in components]
 
     if len(components) > num_buses:
@@ -88,7 +91,7 @@ def solve(graph, num_buses, max_size, constraints, name):
 
 
     assert len(components) == num_buses
-    print('       reducing component sizes')
+    print('       reducing component sizes:')
 
 
     #check for bus size/complete rowdy and shuffle by most unpopular
@@ -104,6 +107,8 @@ def solve(graph, num_buses, max_size, constraints, name):
                 #implement checking for best and not complete later
                 break
         biggest = components[find_over_limit(components)]
+
+        print('                                 %d/%d' % (len(biggest), max_size))
 
 
     assert len(components) == num_buses
@@ -160,6 +165,7 @@ def main():
         formatted correctly.
     '''
     size_categories = ["small", "medium", "large"]
+    size_categories = ["medium", "large"]
     if not os.path.isdir(path_to_outputs):
         os.mkdir(path_to_outputs)
 
@@ -181,8 +187,8 @@ def main():
                 output_file.write("%s\n" % list(component))
             output_file.close()
     
-    # size = 'small'
-    # input_folder = '98'
+    # size = 'medium'
+    # input_folder = '1'
     # if not os.path.isdir(path_to_outputs):
     #     os.mkdir(path_to_outputs)
 
