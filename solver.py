@@ -3,7 +3,6 @@ import os
 import operator
 from collections import defaultdict
 
-
 path_to_inputs = "./all_inputs"
 path_to_outputs = "./outputs"
 
@@ -67,7 +66,7 @@ def solve(graph, num_buses, max_size, constraints, name):
                     G[u][v]['weight'] -= 1
                     lowest = min(lowest, G[u][v]['weight'])
     for u, v, d in G.edges(data=True):
-        d['weight'] += (-lowest)
+        d['weight'] += (1 - lowest)
 
     print('       Lowest: %d' %(-lowest))
 
@@ -100,6 +99,9 @@ def solve(graph, num_buses, max_size, constraints, name):
             smallest = components.pop(0)
             least_full = min(components, key=len)
             least_full.update(smallest)
+
+            print('                             %d/%d' %(len(components), num_buses))
+
 
 
     assert len(components) == num_buses
@@ -206,14 +208,6 @@ def get_rowdiest(G, constraints, stop_cond):
         ret[p[0]] = p[1]
     return ret
 
-    # removed = []
-    # for p in ordered:
-    #     if p[1] <= 2 or len(removed) > stop_cond:
-    #         break
-    #     removed.append(p[0])
-    #     G.remove_node(p[0])
-    # return removed
-
 def main():
     '''
         Main method which iterates over all inputs and calls `solve` on each.
@@ -221,8 +215,8 @@ def main():
         the portion which writes it to a file to make sure their output is
         formatted correctly.
     '''
+
     size_categories = ["small", "medium", "large"]
-    # size_categories = ["medium", "large"]
     if not os.path.isdir(path_to_outputs):
         os.mkdir(path_to_outputs)
 
@@ -234,24 +228,32 @@ def main():
         if not os.path.isdir(output_category_path):
             os.mkdir(output_category_path)
 
-        # i = 0
+        # run = False
         for input_folder in os.listdir(category_dir):
-            # i += 1
-            # if (i < 15):
+            input_name = os.fsdecode(input_folder)
+
+            # if size == 'medium' and input_name == '11':
+            #     run = True
+
+            # if run == False or (size == 'medium' and input_name == '11'):
             #     continue
 
-            if size == 'medium' and input_folder == '126':
-                continue
-
-            input_name = os.fsdecode(input_folder)
             graph, num_buses, size_bus, constraints = parse_input(category_path + "/" + input_name)
+
+            # v = len(graph)
+            # e = graph.number_of_edges()
+            # if (e > (v - 1) ** 2 / 2) and size != 'small':
+            #     skipped.append(size + input_name)
+            #     continue
+
             solution = solve(graph, num_buses, size_bus, constraints, size + input_name)
             output_file = open(output_category_path + "/" + input_name + ".out", "w")
 
             for component in solution:
                 output_file.write("%s\n" % list(component))
             output_file.close()
-    
+
+
     # size = 'medium'
     # input_folder = '1'
     # if not os.path.isdir(path_to_outputs):
