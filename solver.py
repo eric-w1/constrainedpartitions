@@ -34,14 +34,18 @@ def parse_input(folder_name):
 
     return graph, num_buses, size_bus, constraints
 
-def solve(graph, num_buses, max_size, constraints):
-    print('Solving...')
+def solve(graph, num_buses, max_size, constraints, name):
+    print('>>> Solving %s...' %name)
     G = graph.copy()
     # rowdy_removed = remove_rowdiest(G, constraints, num_buses)
+
+
+    print('       assigning edge weights')
+
+    rowdiest = get_rowdiest(G, constraints, num_buses) ##tweak stop cond
+
     for u, v, d in G.edges(data=True):
         d['weight'] = 0
-
-    rowdiest = get_rowdiest(G, constraints, num_buses)
 
     lowest = 0
     for g in constraints:
@@ -49,14 +53,16 @@ def solve(graph, num_buses, max_size, constraints):
             for j in range(i+1, len(g)):
                 u, v = g[i], g[j]
                 if G.has_edge(u, v):
-                    G[u][v]['weight'] -= max(rowdiest.get(u, 1), rowdiest.get(v, 1))
+                    G[u][v]['weight'] -= max(rowdiest.get(u, 0), rowdiest.get(v, 0))
                     lowest = min(lowest, G[u][v]['weight'])
     for u, v, d in G.edges(data=True):
-        d['weight'] += -lowest
+        d['weight'] += (1 - lowest)
+
+    print('       Lowest: %d' %(-lowest))
+    print('       adjusting components')
 
 
     components = list(nx.connected_components(G))
-    print(components)
     if len(components) < num_buses:
         components = [G.subgraph(c) for c in components]
         while len(components) < num_buses: #or all ones
@@ -64,23 +70,27 @@ def solve(graph, num_buses, max_size, constraints):
             for c in components:
                 if len(c) < 2:
                     cuts.append((900000, None))
-                    continue
                 else:
                     cuts.append((nx.stoer_wagner(c)))
+
             index_min = min(enumerate(cuts), key=lambda a: a[1][0])[0]
             mincut = cuts[index_min][1]
-
-            mincomp = components.pop(index_min)
+            components.pop(index_min)
             components.append(G.subgraph(mincut[0]))
             components.append(G.subgraph(mincut[1]))
         components = [set(c.nodes) for c in components]
 
-    if len(components) > num_buses and len(components) > 1:
-        while len(components) > num_buses and len(components):
+    if len(components) > num_buses:
+        while len(components) > num_buses:
             components.sort(key=len)
             components.append(set.union(components.pop(0), components.pop(0)))
             #doesnt check when adding yet
-    print(components)
+
+
+    assert len(components) == num_buses
+    print('       reducing component sizes')
+
+
     #check for bus size/complete rowdy and shuffle by most unpopular
     ind = find_over_limit(components)
     biggest = components[ind]
@@ -93,11 +103,10 @@ def solve(graph, num_buses, max_size, constraints):
                 biggest.remove(n)
                 #implement checking for best and not complete later
                 break
-
         biggest = components[find_over_limit(components)]
 
 
-    assert len(components) = num_buses
+    assert len(components) == num_buses
     for c in components:
         assert len(c) <= max_size
         assert len(c) > 0
@@ -125,7 +134,7 @@ def get_rowdiest(G, constraints, stop_cond):
     for g in constraints:
         for v in g:
             d[v] += 1
-    ordered = sorted(d.items(), key=operator.itemgetter(1))
+    ordered = sorted(d.items(), key=operator.itemgetter(1), reverse=True)
 
     ret = {}
     for i in range(len(ordered)):
@@ -165,12 +174,34 @@ def main():
         for input_folder in os.listdir(category_dir):
             input_name = os.fsdecode(input_folder)
             graph, num_buses, size_bus, constraints = parse_input(category_path + "/" + input_name)
-            solution = solve(graph, num_buses, size_bus, constraints)
+            solution = solve(graph, num_buses, size_bus, constraints, size + input_name)
             output_file = open(output_category_path + "/" + input_name + ".out", "w")
 
             for component in solution:
                 output_file.write("%s\n" % list(component))
             output_file.close()
+    
+    # size = 'small'
+    # input_folder = '98'
+    # if not os.path.isdir(path_to_outputs):
+    #     os.mkdir(path_to_outputs)
+
+    # category_path = path_to_inputs + "/" + size
+    # output_category_path = path_to_outputs + "/" + size
+    # category_dir = os.fsencode(category_path)
+
+    # if not os.path.isdir(output_category_path):
+    #     os.mkdir(output_category_path)
+
+    # input_name = os.fsdecode(input_folder)
+    # graph, num_buses, size_bus, constraints = parse_input(category_path + "/" + input_name)
+    # solution = solve(graph, num_buses, size_bus, constraints, size + input_name)
+    # output_file = open(output_category_path + "/" + input_name + ".out", "w")
+
+    # for component in solution:
+    #     output_file.write("%s\n" % list(component))
+    # output_file.close()
+
 
 if __name__ == '__main__':
     main()
