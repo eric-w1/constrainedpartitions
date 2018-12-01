@@ -99,6 +99,7 @@ def solve(graph, num_buses, max_size, constraints, name):
             smallest = components.pop(0)
             least_full = min(components, key=len)
             least_full.update(smallest)
+            #check not making rowdy group
 
             print('                             %d/%d' %(len(components), num_buses))
 
@@ -217,6 +218,7 @@ def main():
     '''
 
     size_categories = ["small", "medium", "large"]
+    size_categories = ["large"]
     if not os.path.isdir(path_to_outputs):
         os.mkdir(path_to_outputs)
 
@@ -231,6 +233,7 @@ def main():
         # run = False
         for input_folder in os.listdir(category_dir):
             input_name = os.fsdecode(input_folder)
+
 
             # if size == 'medium' and input_name == '11':
             #     run = True
