@@ -2,6 +2,7 @@ import networkx as nx
 import os
 import operator
 from collections import defaultdict
+from multiprocessing import Pool
 
 path_to_inputs = "./all_inputs"
 path_to_outputs = "./outputs"
@@ -36,26 +37,11 @@ def parse_input(folder_name):
 def solve(graph, num_buses, max_size, constraints, name):
     print('>>> Solving %s...' %name)
     G = graph.copy()
-    # rowdy_removed = remove_rowdiest(G, constraints, num_buses)
 
-
-    print('       assigning edge weights')
-
-    # rowdiest = get_rowdiest(G, constraints, num_buses) ##tweak stop cond
+    # print('       assigning edge weights')
 
     for u, v, d in G.edges(data=True):
         d['weight'] = 0
-
-    # lowest = 0
-    # for g in constraints:
-    #     for i in range(len(g)):
-    #         for j in range(i+1, len(g)):
-    #             u, v = g[i], g[j]
-    #             if G.has_edge(u, v):
-    #                 G[u][v]['weight'] -= max(rowdiest.get(u, 0), rowdiest.get(v, 0))
-    #                 lowest = min(lowest, G[u][v]['weight'])
-    # for u, v, d in G.edges(data=True):
-    #     d['weight'] += (1 - lowest)
 
     lowest = 0
     for g in constraints:
@@ -68,12 +54,57 @@ def solve(graph, num_buses, max_size, constraints, name):
     for u, v, d in G.edges(data=True):
         d['weight'] += (1 - lowest)
 
-    print('       Lowest: %d' %(-lowest))
+    # print('       Lowest: %d' %(-lowest))
+
 
     components = list(nx.connected_components(G))
 
-    print('       adjusting components: %d/%d' %(len(components), num_buses))
+    # print('       adjusting components: %d/%d' %(len(components), num_buses))
+    components = adjustNumComponents(components, G, constraints, max_size, num_buses)
 
+    # print('       reducing component sizes:')
+    reduceComponentSizes(components, G, constraints, max_size)
+
+    # print('       local improvement:')
+    localImprovement(components, G, constraints, max_size)
+
+    assert len(components) == num_buses
+    for c in components:
+        assert len(c) <= max_size
+        assert len(c) > 0
+    return components
+
+def score(G, components, constraints):
+    graph = nx.compose_all([G.subgraph(c) for c in components])
+    bus_assignments = {}
+    attendance_count = 0
+    assignments = [list(c) for c in components]
+
+    attendance = {student:False for student in graph.nodes()}
+    for i in range(len(assignments)):
+        for student in assignments[i]:   
+            attendance[student] = True
+            bus_assignments[student] = i
+
+    total_edges = graph.number_of_edges()
+    for i in range(len(constraints)):
+        busses = set()
+        for student in constraints[i]:
+            busses.add(bus_assignments[student])
+        if len(busses) <= 1:
+            for student in constraints[i]:
+                if student in graph:
+                    graph.remove_node(student)
+
+    score = 0
+    for edge in graph.edges():
+        if bus_assignments[edge[0]] == bus_assignments[edge[1]]:
+            score += 1
+    score = score / total_edges
+
+    return score
+
+def adjustNumComponents(components, G, constraints, max_size, num_buses):
     if len(components) < num_buses:
         components = [G.subgraph(c) for c in components]
         while len(components) < num_buses: #or all ones
@@ -90,91 +121,141 @@ def solve(graph, num_buses, max_size, constraints, name):
             components.append(G.subgraph(mincut[0]))
             components.append(G.subgraph(mincut[1]))
 
-            print('                             %d/%d' %(len(components), num_buses))
+            # print('                             %d/%d' %(len(components), num_buses))
         components = [set(c.nodes) for c in components]
 
     if len(components) > num_buses:
         while len(components) > num_buses:
-            components.sort(key=len)
-            smallest = components.pop(0)
-            least_full = min(components, key=len)
-            least_full.update(smallest)
-            #check not making rowdy group
+            combineComponents(components, constraints, max_size, G)
+            # print('                             %d/%d' %(len(components), num_buses))
+    return components
 
-            print('                             %d/%d' %(len(components), num_buses))
+def reduceComponentSizes(components, G, constraints, max_size):
+    #ALL VERTICES
+    # while any([len(c) > max_size for c in components]):
+    #     best_node = None
+    #     move_from = None
+    #     move_to = None
+    #     best_score = 0
 
+    #     for c in range(len(components)):
+    #         for node in components[c]:
+    #             for i in range(len(components)):
+    #                 if c == i:
+    #                     continue
+    #                 if len(components[i]) < max_size and len(components[c]) > max_size:
+    #                     comps = components.copy()
+    #                     comps[c] = comps[c].copy()
+    #                     comps[i] = comps[i].copy()
+    #                     comps[i].add(node)
+    #                     comps[c].remove(node)
+    #                     score_after = score(G, comps, constraints)
 
+    #                 if score_after >= best_score:
+    #                     best_score = score_after
+    #                     best_node = node
+    #                     move_to = i
+    #                     move_from = c
 
-    assert len(components) == num_buses
-    print('       reducing component sizes:')
+    #         components[move_to].add(best_node)
+    #         components[move_from].remove(best_node)
 
+        # print('                                 moved one')
 
+    #LEAST POPULAR
     ind = find_over_limit(components)
     biggest = components[ind]
 
     while(len(biggest) > max_size):
         n = least_popular(biggest, G)
-        biggest.remove(n)
         relocate(n, components, ind, constraints, max_size, G)
         
         ind = find_over_limit(components)
         biggest = components[ind]
 
+        # print('                                 %d/%d' % (len(biggest), max_size))
 
-        print('                                 %d/%d' % (len(biggest), max_size))
+def localImprovement(components, G, constraints, max_size):
+    improved = True
+    while improved:
+        improved = False
+        best_node = None
+        move_from = None
+        move_to = None
+        best_improvement = 0
 
+        for c in range(len(components)):
+            for node in components[c]:
+                for i in range(len(components)):
+                    if c == i:
+                        continue
+                    if len(components[i]) < max_size:
+                        comps = components.copy()
+                        score_before = score(G, comps, constraints)
+                        comps[c] = comps[c].copy()
+                        comps[i] = comps[i].copy()
+                        comps[i].add(node)
+                        comps[c].remove(node)
+                        score_after = score(G, comps, constraints)
 
-    assert len(components) == num_buses
-    for c in components:
-        assert len(c) <= max_size
-        assert len(c) > 0
+                        if score_after - score_before > best_improvement:
+                            best_improvement = score_after - score_before
+                            best_node = node
+                            move_to = i
+                            move_from = c
+        # print('                          %f' %best_improvement)
+
+        if best_node != None:
+            components[move_to].add(best_node)
+            components[move_from].remove(best_node)
+            improved = True
     return components
 
-def relocate(node, components, exception, constraints, max_size, G):
-    most_edge_diff = 0
-    best_by_edge = None
-
-    least_rowdy_diff = 10000
-    best_by_rowdy = None
-
+def combineComponents(components, constraints, max_size, G):
+    least_full = min(enumerate(components), key=lambda a: len(a[1]))[0]
+    move_to = None
+    best_score = 0
+    c = least_full
 
     for i in range(len(components)):
-        if len(components[i]) < max_size and i != exception:
-            comp = components[i].copy()
-            S = G.subgraph(comp)
-            edges_before = S.number_of_edges()
-            rowdy_before = rowdy_size(comp, constraints)
-            
-            comp.add(node)
-            S = G.subgraph(comp)
-            edges_after = S.number_of_edges()
-            rowdy_after = rowdy_size(comp, constraints)
+        if i == least_full or len(components[i]) >= max_size:
+            continue
+        comps = components.copy()
+        comps[least_full] = comps[least_full].copy()
+        comps[least_full].update(comps[i])
+        comps.pop(i)
+        score_after = score(G, comps, constraints)
 
-            edge_diff = edges_after - edges_before
-            rowdy_diff = rowdy_after - rowdy_before
+        if score_after >= best_score:
+            best_score = score_after
+            move_to = i
 
-            if (rowdy_diff > 0):
-                if rowdy_diff < least_rowdy_diff:
-                    least_rowdy_diff = rowdy_diff
-                    best_by_rowdy = components[i]
-            else:
-                if edge_diff >= most_edge_diff:
-                    most_edges = edge_diff
-                    best_by_edge = components[i]
+    components[least_full].update(components[move_to])
+    components.pop(move_to)
 
-    if best_by_edge != None:
-        best_by_edge.add(node)
-    else:
-        best_by_rowdy.add(node)
+def relocate(node, components, move_from, constraints, max_size, G):
+    best_node = None
+    c = move_from
+    move_to = None
+    best_score = 0
 
-def rowdy_size(comp, constraints):
-    removed = set()
-    for g in constraints:
-        g = set(g)
-        if (g.issubset(comp)):
-            removed.update(g)
-    return len(removed)
+    for i in range(len(components)):
+        if len(components[i]) >= max_size or i == c:
+            continue
+        comps = components.copy()
+        comps[c] = comps[c].copy()
+        comps[i] = comps[i].copy()
+        comps[i].add(node)
+        comps[c].remove(node)
+        score_after = score(G, comps, constraints)
 
+        if score_after >= best_score:
+            best_score = score_after
+            best_node = node
+            move_to = i
+
+    components[move_to].add(best_node)
+    components[move_from].remove(best_node)
 
 def find_over_limit(components):
     index_max = max(enumerate(components), key=lambda a: len(a[1]))[0]
@@ -194,31 +275,19 @@ def least_popular(component, G):
             best = n
     return best
 
-def get_rowdiest(G, constraints, stop_cond):
-    d = defaultdict(int)
-    for g in constraints:
-        for v in g:
-            d[v] += 1
-    ordered = sorted(d.items(), key=operator.itemgetter(1), reverse=True)
+def process(graph, num_buses, size_bus, constraints, size, output_category_path, input_name):
 
-    ret = {}
-    for i in range(len(ordered)):
-        p = ordered[i]
-        if p[1] <= 2 or len(ret) > stop_cond:
-            break
-        ret[p[0]] = p[1]
-    return ret
+    solution = solve(graph, num_buses, size_bus, constraints, size + input_name)
+    output_file = open(output_category_path + "/" + input_name + ".out", "w")
+
+    for component in solution:
+        output_file.write("%s\n" % list(component))
+    output_file.close()
 
 def main():
-    '''
-        Main method which iterates over all inputs and calls `solve` on each.
-        The student should modify `solve` to return their solution and modify
-        the portion which writes it to a file to make sure their output is
-        formatted correctly.
-    '''
+    tasks = []
 
     size_categories = ["small", "medium", "large"]
-    size_categories = ["large"]
     if not os.path.isdir(path_to_outputs):
         os.mkdir(path_to_outputs)
 
@@ -243,43 +312,17 @@ def main():
 
             graph, num_buses, size_bus, constraints = parse_input(category_path + "/" + input_name)
 
-            # v = len(graph)
-            # e = graph.number_of_edges()
-            # if (e > (v - 1) ** 2 / 2) and size != 'small':
-            #     skipped.append(size + input_name)
-            #     continue
-
-            solution = solve(graph, num_buses, size_bus, constraints, size + input_name)
-            output_file = open(output_category_path + "/" + input_name + ".out", "w")
-
-            for component in solution:
-                output_file.write("%s\n" % list(component))
-            output_file.close()
-
-
-    # size = 'medium'
-    # input_folder = '1'
-    # if not os.path.isdir(path_to_outputs):
-    #     os.mkdir(path_to_outputs)
-
-    # category_path = path_to_inputs + "/" + size
-    # output_category_path = path_to_outputs + "/" + size
-    # category_dir = os.fsencode(category_path)
-
-    # if not os.path.isdir(output_category_path):
-    #     os.mkdir(output_category_path)
-
-    # input_name = os.fsdecode(input_folder)
-    # graph, num_buses, size_bus, constraints = parse_input(category_path + "/" + input_name)
-    # solution = solve(graph, num_buses, size_bus, constraints, size + input_name)
-    # output_file = open(output_category_path + "/" + input_name + ".out", "w")
-
-    # for component in solution:
-    #     output_file.write("%s\n" % list(component))
-    # output_file.close()
-
-    # python output_scorer.py './all_inputs/small/56' './outputs/small/56.out'
-
+            print(size, input_name)
+            # process(graph, num_buses, size_bus, constraints, size, output_category_path, input_name)
+            tasks.append((graph, num_buses, size_bus, constraints, size, output_category_path, input_name))
+    
+    num_threads = 5
+    pool = Pool(num_threads)
+    for t in tasks:
+        pool.apply_async(process, t)
+    # results = [pool.apply_async(process, t) for t in tasks]
+    pool.close()
+    pool.join()
 
 if __name__ == '__main__':
     main()
