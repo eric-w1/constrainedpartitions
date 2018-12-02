@@ -75,7 +75,7 @@ def solve(graph, num_buses, max_size, constraints, name):
     return components
 
 def score(G, components, constraints):
-    graph = nx.compose_all([G.subgraph(c) for c in components])
+    graph = G.copy()
     bus_assignments = {}
     attendance_count = 0
     assignments = [list(c) for c in components]
@@ -288,6 +288,7 @@ def main():
     tasks = []
 
     size_categories = ["small", "medium", "large"]
+    size_categories = ["medium", "large"]
     if not os.path.isdir(path_to_outputs):
         os.mkdir(path_to_outputs)
 
@@ -302,7 +303,6 @@ def main():
         # run = False
         for input_folder in os.listdir(category_dir):
             input_name = os.fsdecode(input_folder)
-
 
             # if size == 'medium' and input_name == '11':
             #     run = True
